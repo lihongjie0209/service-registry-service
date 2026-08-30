@@ -1,0 +1,23 @@
+app:
+  env: compose
+log:
+  level: debug
+  file: /app/logs/app.log
+swagger:
+  enabled: true
+database:
+  enabled: false
+  name: platform
+  schema: service_registry
+grpc:
+  reflection_enabled: true
+redis:
+  enabled: true
+  address: redis:6379
+auth:
+  psk:
+    enabled: true
+    key: registry-dev-psk-00000000000000000000
+    grpc_methods: [/platform.registry.v1.RegistryService/*]
+cron:
+  enabled: false
