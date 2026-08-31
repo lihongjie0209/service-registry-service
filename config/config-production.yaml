@@ -36,6 +36,9 @@ observability:
   metrics_enabled: true
   tracing_enabled: false
 auth:
+  jwks_url: ""
+  issuer: identity-service
+  audience: service-registry-service
   psk:
     enabled: true
     key: ""

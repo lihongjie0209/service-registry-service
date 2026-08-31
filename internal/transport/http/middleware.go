@@ -10,13 +10,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lihongjie0209/microservice-platform-go/principal"
 	"github.com/lihongjie0209/service-registry-service/internal/apperror"
 	"github.com/lihongjie0209/service-registry-service/internal/auth"
 	"github.com/lihongjie0209/service-registry-service/internal/config"
 	"github.com/lihongjie0209/service-registry-service/internal/environment"
 	"github.com/lihongjie0209/service-registry-service/internal/idempotency"
 	"github.com/lihongjie0209/service-registry-service/internal/observability"
-	"github.com/lihongjie0209/service-registry-service/internal/principal"
 	appLimit "github.com/lihongjie0209/service-registry-service/internal/ratelimit"
 	"github.com/lihongjie0209/service-registry-service/internal/requestid"
 	"go.opentelemetry.io/otel/trace"
@@ -213,13 +213,13 @@ func JWT(service *auth.Service, logger *slog.Logger) gin.HandlerFunc {
 			Fail(c, logger, apperror.Unauthorized("missing bearer token"))
 			return
 		}
-		claims, err := service.Parse(raw)
+		identity, err := service.Verify(c.Request.Context(), raw)
 		if err != nil {
 			Fail(c, logger, apperror.Unauthorized("invalid or expired token"))
 			return
 		}
-		c.Set("subject", claims.Subject)
-		c.Request = c.Request.WithContext(principal.WithContext(c.Request.Context(), principal.Principal{Subject: claims.Subject, Method: principal.AuthenticationJWT}))
+		c.Set("subject", identity.ID)
+		c.Request = c.Request.WithContext(principal.WithContext(c.Request.Context(), identity))
 		c.Next()
 	}
 }
@@ -233,7 +233,7 @@ func Authentication(service *auth.Service, logger *slog.Logger, cfg config.Auth)
 				return
 			}
 			c.Set("subject", "psk")
-			c.Request = c.Request.WithContext(principal.WithContext(c.Request.Context(), principal.Principal{Subject: "psk", Method: principal.AuthenticationPSK}))
+			c.Request = c.Request.WithContext(principal.SystemContext(c.Request.Context(), "psk"))
 			c.Next()
 			return
 		}

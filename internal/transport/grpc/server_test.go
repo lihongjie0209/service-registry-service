@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lihongjie0209/microservice-platform-go/principal"
 	"github.com/lihongjie0209/service-registry-service/internal/auth"
 	"github.com/lihongjie0209/service-registry-service/internal/config"
-	"github.com/lihongjie0209/service-registry-service/internal/principal"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -38,7 +38,7 @@ func TestAuthenticateGRPC_PSKWildcard(t *testing.T) {
 			}
 			if test.code == codes.OK {
 				value, ok := principal.FromContext(authenticated)
-				if !ok || value.Subject != "psk" || value.Method != principal.AuthenticationPSK {
+				if !ok || value.ID != "psk" || value.Type != principal.TypeSystem {
 					t.Fatalf("principal = %#v, %v", value, ok)
 				}
 			}
@@ -60,7 +60,7 @@ func TestAuthenticateGRPC_JWTInjectsPrincipal(t *testing.T) {
 		t.Fatal(err)
 	}
 	value, ok := principal.FromContext(ctx)
-	if !ok || value.Subject != "user-1" || value.Method != principal.AuthenticationJWT {
+	if !ok || value.ID != "user-1" || value.Type != principal.TypeServiceAccount {
 		t.Fatalf("principal = %#v, %v", value, ok)
 	}
 }

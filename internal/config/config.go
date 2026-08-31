@@ -146,6 +146,9 @@ type JWT struct {
 type Auth struct {
 	ClientID        string   `mapstructure:"client_id"`
 	ClientSecret    string   `mapstructure:"client_secret"`
+	JWKSURL         string   `mapstructure:"jwks_url"`
+	Issuer          string   `mapstructure:"issuer"`
+	Audience        string   `mapstructure:"audience"`
 	SkipHTTPPaths   []string `mapstructure:"skip_http_paths"`
 	SkipGRPCMethods []string `mapstructure:"skip_grpc_methods"`
 	PSK             PSK      `mapstructure:"psk"`
@@ -369,6 +372,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("jwt.ttl", "2h")
 	v.SetDefault("auth.client_id", "")
 	v.SetDefault("auth.client_secret", "")
+	v.SetDefault("auth.jwks_url", "")
+	v.SetDefault("auth.issuer", "identity-service")
+	v.SetDefault("auth.audience", "service-registry-service")
 	v.SetDefault("auth.skip_http_paths", []string{"/api/v1/version"})
 	v.SetDefault("auth.skip_grpc_methods", []string{"/grpc.health.v1.Health/*"})
 	v.SetDefault("auth.psk.enabled", false)
@@ -475,6 +481,9 @@ func (c Config) Validate() error {
 		if _, err := path.Match(pattern, "/validation/target"); err != nil {
 			return fmt.Errorf("auth.skip_http_paths contains invalid pattern %q: %w", pattern, err)
 		}
+	}
+	if c.App.Env == "production" && (strings.TrimSpace(c.Auth.JWKSURL) == "" || strings.TrimSpace(c.Auth.Issuer) == "" || strings.TrimSpace(c.Auth.Audience) == "") {
+		return errors.New("production auth requires JWKS URL, issuer, and audience")
 	}
 	for _, method := range c.Auth.SkipGRPCMethods {
 		if !strings.HasPrefix(method, "/") || strings.Count(method, "/") != 2 {

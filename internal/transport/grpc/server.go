@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lihongjie0209/microservice-platform-go/principal"
 	registryv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/registry/v1"
 	"github.com/lihongjie0209/service-registry-service/internal/auth"
 	"github.com/lihongjie0209/service-registry-service/internal/config"
@@ -18,7 +19,6 @@ import (
 	apphealth "github.com/lihongjie0209/service-registry-service/internal/health"
 	"github.com/lihongjie0209/service-registry-service/internal/idempotency"
 	"github.com/lihongjie0209/service-registry-service/internal/observability"
-	"github.com/lihongjie0209/service-registry-service/internal/principal"
 	"github.com/lihongjie0209/service-registry-service/internal/registry"
 	"github.com/lihongjie0209/service-registry-service/internal/requestid"
 
@@ -156,7 +156,7 @@ func authenticateGRPC(ctx context.Context, method string, service *auth.Service,
 		if len(values) == 0 || !auth.VerifyPSK(values[0], cfg.PSK.Key) {
 			return nil, status.Error(codes.Unauthenticated, "missing or invalid PSK")
 		}
-		return principal.WithContext(ctx, principal.Principal{Subject: "psk", Method: principal.AuthenticationPSK}), nil
+		return principal.SystemContext(ctx, "psk"), nil
 	}
 	if auth.MatchesAny(method, cfg.SkipGRPCMethods) {
 		return ctx, nil
@@ -168,11 +168,11 @@ func authenticateGRPC(ctx context.Context, method string, service *auth.Service,
 	if !ok || !strings.EqualFold(scheme, "Bearer") {
 		return nil, status.Error(codes.Unauthenticated, "invalid bearer token")
 	}
-	claims, err := service.Parse(raw)
+	identity, err := service.Verify(ctx, raw)
 	if err != nil {
 		return nil, status.Error(codes.Unauthenticated, "invalid or expired token")
 	}
-	return principal.WithContext(ctx, principal.Principal{Subject: claims.Subject, Method: principal.AuthenticationJWT}), nil
+	return principal.WithContext(ctx, identity), nil
 }
 
 type contextServerStream struct {

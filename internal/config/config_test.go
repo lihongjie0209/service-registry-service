@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -20,6 +21,15 @@ func TestLoad_EnvironmentOverridesFile(t *testing.T) {
 	}
 	if cfg.HTTP.Address != "127.0.0.1:9090" {
 		t.Fatalf("HTTP.Address = %q, want %q", cfg.HTTP.Address, "127.0.0.1:9090")
+	}
+}
+
+func TestLoadWithProfile_ProductionRequiresIdentityJWKS(t *testing.T) {
+	t.Setenv("APP_GRPC_TLS_CERT_FILE", "/tmp/tls.crt")
+	t.Setenv("APP_GRPC_TLS_KEY_FILE", "/tmp/tls.key")
+	_, err := LoadWithProfile("../../config/config.yaml", "production")
+	if err == nil || !strings.Contains(err.Error(), "production auth requires JWKS") {
+		t.Fatalf("LoadWithProfile() error = %v, want production JWKS requirement", err)
 	}
 }
 

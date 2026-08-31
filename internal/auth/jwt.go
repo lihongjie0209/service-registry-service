@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
@@ -9,7 +10,10 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/lihongjie0209/microservice-platform-go/authn"
+	"github.com/lihongjie0209/microservice-platform-go/principal"
 	"github.com/lihongjie0209/service-registry-service/internal/config"
+	"go.uber.org/fx"
 )
 
 type Claims struct{ jwt.RegisteredClaims }
@@ -19,10 +23,36 @@ type Service struct {
 	ttl          time.Duration
 	clientID     string
 	clientSecret string
+	verifier     *authn.JWKSVerifier
 }
 
 func New(cfg config.Config) *Service {
 	return &Service{issuer: cfg.JWT.Issuer, secret: []byte(cfg.JWT.Secret), ttl: cfg.JWT.TTL, clientID: cfg.Auth.ClientID, clientSecret: cfg.Auth.ClientSecret}
+}
+
+func NewRuntime(lifecycle fx.Lifecycle, cfg config.Config) (*Service, error) {
+	service := New(cfg)
+	if cfg.Auth.JWKSURL == "" {
+		return service, nil
+	}
+	verifier, err := authn.NewJWKSVerifier(context.Background(), authn.JWKSConfig{URL: cfg.Auth.JWKSURL, Issuer: cfg.Auth.Issuer, Audience: cfg.Auth.Audience})
+	if err != nil {
+		return nil, fmt.Errorf("configure identity token verifier: %w", err)
+	}
+	service.verifier = verifier
+	lifecycle.Append(fx.StopHook(func() { verifier.Close() }))
+	return service, nil
+}
+
+func (s *Service) Verify(ctx context.Context, raw string) (principal.Principal, error) {
+	if s.verifier != nil {
+		return s.verifier.VerifyBearer(ctx, raw)
+	}
+	claims, err := s.Parse(raw)
+	if err != nil {
+		return principal.Principal{}, err
+	}
+	return principal.Principal{ID: claims.Subject, Type: principal.TypeServiceAccount}, nil
 }
 
 func (s *Service) Enabled() bool {

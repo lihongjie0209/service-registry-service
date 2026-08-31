@@ -81,6 +81,9 @@ jwt:
 auth:
   client_id: ""
   client_secret: ""
+  jwks_url: ""
+  issuer: identity-service
+  audience: service-registry-service
   # Supports path.Match wildcards; '*' never crosses '/'.
   skip_http_paths: [/api/v1/version]
   skip_grpc_methods:
