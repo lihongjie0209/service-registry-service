@@ -173,7 +173,7 @@ curl -H "Authorization: Bearer $APP_OBSERVABILITY_PPROF_TOKEN" http://127.0.0.1:
 
 ## gRPC server and client
 
-The gRPC server listens independently on `127.0.0.1:9090` and is managed by the same Fx lifecycle. The versioned contract is under `proto/hello/v1`; generated clients and servers are checked in under `gen/hello/v1`.
+The gRPC server listens independently on `127.0.0.1:9090`, is managed by the same Fx lifecycle, and implements the released central `platform.registry.v1.RegistryService` contract.
 
 - `hello.v1.HelloService/Ping`: authenticated example RPC
 - `hello.v1.UserService/*`: CRUD RPCs backed by the same service as HTTP
