@@ -43,3 +43,23 @@ auth:
     enabled: true
     key: ""
     grpc_methods: [/platform.registry.v1.RegistryService/*]
+authorization:
+  enabled: true
+outbound:
+  grpc:
+    authorization:
+      target: authorization-service:9090
+      timeout: 2s
+      retry:
+        max_attempts: 1
+        initial_backoff: 100ms
+        max_backoff: 1s
+        methods: []
+      breaker:
+        enabled: true
+        failure_threshold: 5
+        open_timeout: 30s
+      tls:
+        enabled: true
+        server_name: authorization-service
+        ca_file: ""

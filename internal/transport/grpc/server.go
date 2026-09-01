@@ -11,7 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lihongjie0209/microservice-platform-go/principal"
+	platformauthz "github.com/lihongjie0209/microservice-platform-go/authz"
+	platformprincipal "github.com/lihongjie0209/microservice-platform-go/principal"
 	registryv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/registry/v1"
 	"github.com/lihongjie0209/service-registry-service/internal/auth"
 	"github.com/lihongjie0209/service-registry-service/internal/config"
@@ -40,12 +41,12 @@ type Server struct {
 	logger  *slog.Logger
 }
 
-func NewServer(lc fx.Lifecycle, cfg config.Config, authService *auth.Service, healthService *apphealth.Service, registryService *registry.Service, registryStore *registry.Store, metrics *observability.Metrics, logger *slog.Logger) (*Server, error) {
+func NewServer(lc fx.Lifecycle, cfg config.Config, authService *auth.Service, authorizer platformauthz.Authorizer, healthService *apphealth.Service, registryService *registry.Service, registryStore *registry.Store, metrics *observability.Metrics, logger *slog.Logger) (*Server, error) {
 	options := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(cfg.GRPC.MaxReceiveBytes),
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
-		grpc.ChainUnaryInterceptor(environmentInterceptor(cfg.Runtime.ActiveProfile), requestIDInterceptor, idempotencyInterceptor, recoveryInterceptor(logger), authInterceptor(authService, cfg.Auth), metricsInterceptor(metrics, logger)),
-		grpc.ChainStreamInterceptor(environmentStreamInterceptor(cfg.Runtime.ActiveProfile), requestIDStreamInterceptor, idempotencyStreamInterceptor, recoveryStreamInterceptor(logger), authStreamInterceptor(authService, cfg.Auth), metricsStreamInterceptor(metrics, logger)),
+		grpc.ChainUnaryInterceptor(environmentInterceptor(cfg.Runtime.ActiveProfile), requestIDInterceptor, idempotencyInterceptor, recoveryInterceptor(logger), authInterceptor(authService, cfg.Auth), platformauthz.UnaryServerInterceptor(authorizer, registryGRPCRequirement(cfg.Authorization.Enabled)), metricsInterceptor(metrics, logger)),
+		grpc.ChainStreamInterceptor(environmentStreamInterceptor(cfg.Runtime.ActiveProfile), requestIDStreamInterceptor, idempotencyStreamInterceptor, recoveryStreamInterceptor(logger), authStreamInterceptor(authService, cfg.Auth), platformauthz.StreamServerInterceptor(authorizer, registryGRPCRequirement(cfg.Authorization.Enabled)), metricsStreamInterceptor(metrics, logger)),
 	}
 	if cfg.GRPC.TLS.Enabled {
 		creds, err := serverCredentials(cfg.GRPC.TLS)
@@ -63,6 +64,26 @@ func NewServer(lc fx.Lifecycle, cfg config.Config, authService *auth.Service, he
 	server := &Server{server: grpcServer, address: cfg.GRPC.Address, logger: logger}
 	lc.Append(fx.Hook{OnStart: server.start(cfg.GRPC.Enabled), OnStop: server.stop})
 	return server, nil
+}
+
+func registryGRPCRequirement(enabled bool) platformauthz.GRPCResolver {
+	return func(method string) (platformauthz.Requirement, bool) {
+		if !enabled {
+			return platformauthz.Requirement{}, false
+		}
+		requirements := map[string]platformauthz.Requirement{
+			registryv1.RegistryService_RegisterInstance_FullMethodName:   {Resource: "service_registry.instance", Action: "register", Scope: platformauthz.ScopePlatform},
+			registryv1.RegistryService_RenewLease_FullMethodName:         {Resource: "service_registry.instance", Action: "renew", Scope: platformauthz.ScopePlatform},
+			registryv1.RegistryService_DeregisterInstance_FullMethodName: {Resource: "service_registry.instance", Action: "deregister", Scope: platformauthz.ScopePlatform},
+			registryv1.RegistryService_SetInstanceStatus_FullMethodName:  {Resource: "service_registry.instance", Action: "update_status", Scope: platformauthz.ScopePlatform},
+			registryv1.RegistryService_GetInstance_FullMethodName:        {Resource: "service_registry.instance", Action: "read", Scope: platformauthz.ScopePlatform},
+			registryv1.RegistryService_ListInstances_FullMethodName:      {Resource: "service_registry.instance", Action: "list", Scope: platformauthz.ScopePlatform},
+			registryv1.RegistryService_ListServices_FullMethodName:       {Resource: "service_registry.service", Action: "list", Scope: platformauthz.ScopePlatform},
+			registryv1.RegistryService_WatchService_FullMethodName:       {Resource: "service_registry.service", Action: "watch", Scope: platformauthz.ScopePlatform},
+		}
+		requirement, ok := requirements[method]
+		return requirement, ok
+	}
 }
 
 func (s *Server) start(enabled bool) func(context.Context) error {
@@ -156,7 +177,7 @@ func authenticateGRPC(ctx context.Context, method string, service *auth.Service,
 		if len(values) == 0 || !auth.VerifyPSK(values[0], cfg.PSK.Key) {
 			return nil, status.Error(codes.Unauthenticated, "missing or invalid PSK")
 		}
-		return principal.SystemContext(ctx, "psk"), nil
+		return platformprincipal.WithContext(ctx, platformprincipal.Principal{ID: "service-registry-service:psk", Type: platformprincipal.TypeServiceAccount}), nil
 	}
 	if auth.MatchesAny(method, cfg.SkipGRPCMethods) {
 		return ctx, nil
@@ -172,7 +193,7 @@ func authenticateGRPC(ctx context.Context, method string, service *auth.Service,
 	if err != nil {
 		return nil, status.Error(codes.Unauthenticated, "invalid or expired token")
 	}
-	return principal.WithContext(ctx, identity), nil
+	return platformprincipal.WithContext(ctx, identity), nil
 }
 
 type contextServerStream struct {

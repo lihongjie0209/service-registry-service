@@ -4,7 +4,9 @@ import (
 	"testing"
 	"time"
 
+	platformauthz "github.com/lihongjie0209/microservice-platform-go/authz"
 	"github.com/lihongjie0209/microservice-platform-go/principal"
+	registryv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/registry/v1"
 	"github.com/lihongjie0209/service-registry-service/internal/auth"
 	"github.com/lihongjie0209/service-registry-service/internal/config"
 	"google.golang.org/grpc/codes"
@@ -38,11 +40,26 @@ func TestAuthenticateGRPC_PSKWildcard(t *testing.T) {
 			}
 			if test.code == codes.OK {
 				value, ok := principal.FromContext(authenticated)
-				if !ok || value.ID != "psk" || value.Type != principal.TypeSystem {
+				if !ok || value.ID != "service-registry-service:psk" || value.Type != principal.TypeServiceAccount {
 					t.Fatalf("principal = %#v, %v", value, ok)
 				}
 			}
 		})
+	}
+}
+
+func TestRegistryGRPCRequirementCoversEveryBusinessMethod(t *testing.T) {
+	t.Parallel()
+	resolve := registryGRPCRequirement(true)
+	methods := []string{registryv1.RegistryService_RegisterInstance_FullMethodName, registryv1.RegistryService_RenewLease_FullMethodName, registryv1.RegistryService_DeregisterInstance_FullMethodName, registryv1.RegistryService_SetInstanceStatus_FullMethodName, registryv1.RegistryService_GetInstance_FullMethodName, registryv1.RegistryService_ListInstances_FullMethodName, registryv1.RegistryService_ListServices_FullMethodName, registryv1.RegistryService_WatchService_FullMethodName}
+	for _, method := range methods {
+		requirement, ok := resolve(method)
+		if !ok || requirement.Resource == "" || requirement.Action == "" || requirement.Scope != platformauthz.ScopePlatform {
+			t.Fatalf("method %q requirement = %+v, %v", method, requirement, ok)
+		}
+	}
+	if _, ok := registryGRPCRequirement(false)(registryv1.RegistryService_WatchService_FullMethodName); ok {
+		t.Fatal("disabled authorization must not enforce")
 	}
 }
 
