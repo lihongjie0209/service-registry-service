@@ -24,6 +24,44 @@ func TestLoad_EnvironmentOverridesFile(t *testing.T) {
 	}
 }
 
+func TestLoad_RegistryIdempotencyPolicyExcludesLeaseRenewalAndHTTPReads(t *testing.T) {
+	cfg, err := Load("../../config/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Idempotency.HTTPPaths) != 0 {
+		t.Fatalf("HTTPPaths = %#v", cfg.Idempotency.HTTPPaths)
+	}
+	methods := strings.Join(cfg.Idempotency.GRPCMethods, ",")
+	if strings.Contains(methods, "RenewLease") || strings.Contains(methods, "List") || strings.Contains(methods, "Watch") {
+		t.Fatalf("real-time registry method entered idempotency policy: %s", methods)
+	}
+	for _, mutation := range []string{"RegisterInstance", "DeregisterInstance", "SetInstanceStatus"} {
+		if !strings.Contains(methods, mutation) {
+			t.Fatalf("mutation %s missing from %s", mutation, methods)
+		}
+	}
+	if cfg.Idempotency.ResultTTL != 10*time.Minute || cfg.Idempotency.FailureTTL != time.Minute {
+		t.Fatalf("result_ttl=%s failure_ttl=%s", cfg.Idempotency.ResultTTL, cfg.Idempotency.FailureTTL)
+	}
+}
+
+func TestLoad_IdempotencyRouteEnvironmentOverrides(t *testing.T) {
+	directory := t.TempDir()
+	configPath := filepath.Join(directory, "config.yaml")
+	if err := os.WriteFile(configPath, []byte("idempotency:\n  http_paths: []\n  grpc_methods: [/old.Service/Create]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("APP_IDEMPOTENCY_GRPC_METHODS", "[/platform.registry.v1.RegistryService/RegisterInstance, /platform.registry.v1.RegistryService/DeregisterInstance]")
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := strings.Join(cfg.Idempotency.GRPCMethods, ","); got != "/platform.registry.v1.RegistryService/RegisterInstance,/platform.registry.v1.RegistryService/DeregisterInstance" {
+		t.Fatalf("GRPCMethods = %q", got)
+	}
+}
+
 func TestLoadWithProfile_ProductionRequiresIdentityJWKS(t *testing.T) {
 	t.Setenv("APP_GRPC_TLS_CERT_FILE", "/tmp/tls.crt")
 	t.Setenv("APP_GRPC_TLS_KEY_FILE", "/tmp/tls.key")

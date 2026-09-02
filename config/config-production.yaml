@@ -32,6 +32,11 @@ rate_limit:
   enabled: true
 idempotency:
   enabled: true
+  http_paths: []
+  grpc_methods:
+    - /platform.registry.v1.RegistryService/RegisterInstance
+    - /platform.registry.v1.RegistryService/DeregisterInstance
+    - /platform.registry.v1.RegistryService/SetInstanceStatus
 observability:
   metrics_enabled: true
   tracing_enabled: false
