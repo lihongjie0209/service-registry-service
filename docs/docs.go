@@ -365,7 +365,16 @@ const docTemplate = `{
                         "$ref": "#/definitions/httptransport.InstanceBody"
                     }
                 },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
                 "revision": {
+                    "type": "integer"
+                },
+                "total": {
                     "type": "integer"
                 }
             }
@@ -382,6 +391,15 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "page": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "page_size": {
+                    "type": "integer",
+                    "maximum": 100,
+                    "minimum": 1
+                },
                 "service_name": {
                     "type": "string"
                 }
@@ -390,6 +408,12 @@ const docTemplate = `{
         "httptransport.ListServicesBody": {
             "type": "object",
             "properties": {
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
                 "revision": {
                     "type": "integer"
                 },
@@ -398,12 +422,24 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/httptransport.ServiceSummaryBody"
                     }
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         },
         "httptransport.ListServicesRequest": {
             "type": "object",
             "properties": {
+                "page": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "page_size": {
+                    "type": "integer",
+                    "maximum": 100,
+                    "minimum": 1
+                },
                 "prefix": {
                     "type": "string"
                 }

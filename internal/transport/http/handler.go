@@ -86,9 +86,13 @@ type ListInstancesRequest struct {
 	ServiceName     string            `json:"service_name"`
 	Metadata        map[string]string `json:"metadata"`
 	IncludeDraining bool              `json:"include_draining"`
+	Page            int               `json:"page" binding:"omitempty,min=1"`
+	PageSize        int               `json:"page_size" binding:"omitempty,min=1,max=100"`
 }
 type ListServicesRequest struct {
-	Prefix string `json:"prefix"`
+	Prefix   string `json:"prefix"`
+	Page     int    `json:"page" binding:"omitempty,min=1"`
+	PageSize int    `json:"page_size" binding:"omitempty,min=1,max=100"`
 }
 type InstanceBody struct {
 	InstanceID     string            `json:"instance_id"`
@@ -104,6 +108,9 @@ type InstanceBody struct {
 type ListInstancesBody struct {
 	Instances []InstanceBody `json:"instances"`
 	Revision  uint64         `json:"revision"`
+	Total     int            `json:"total"`
+	Page      int            `json:"page"`
+	PageSize  int            `json:"page_size"`
 }
 type ServiceSummaryBody struct {
 	ServiceName       string `json:"service_name"`
@@ -113,6 +120,9 @@ type ServiceSummaryBody struct {
 type ListServicesBody struct {
 	Services []ServiceSummaryBody `json:"services"`
 	Revision uint64               `json:"revision"`
+	Total    int                  `json:"total"`
+	Page     int                  `json:"page"`
+	PageSize int                  `json:"page_size"`
 }
 
 // ListInstances godoc
@@ -131,12 +141,13 @@ func (h *Handler) ListInstances(c *gin.Context) {
 		Fail(c, h.logger, apperror.Invalid("invalid request", err))
 		return
 	}
-	response, err := h.registry.List(c.Request.Context(), &registryv1.ListInstancesRequest{ServiceName: request.ServiceName, Selector: &registryv1.MetadataSelector{Match: request.Metadata}, IncludeDraining: request.IncludeDraining})
+	page, pageSize := pagination(request.Page, request.PageSize)
+	response, total, err := h.registry.ListPage(c.Request.Context(), &registryv1.ListInstancesRequest{ServiceName: request.ServiceName, Selector: &registryv1.MetadataSelector{Match: request.Metadata}, IncludeDraining: request.IncludeDraining}, page, pageSize)
 	if err != nil {
 		Fail(c, h.logger, apperror.Invalid(err.Error(), err))
 		return
 	}
-	body := ListInstancesBody{Revision: response.Revision, Instances: make([]InstanceBody, 0, len(response.Instances))}
+	body := ListInstancesBody{Revision: response.Revision, Instances: make([]InstanceBody, 0, len(response.Instances)), Total: total, Page: page, PageSize: pageSize}
 	for _, value := range response.Instances {
 		body.Instances = append(body.Instances, InstanceBody{InstanceID: value.InstanceId, ServiceName: value.ServiceName, Endpoint: value.Endpoint, Protocol: value.Protocol, Status: value.Status.String(), Weight: value.Weight, Version: value.Version, Metadata: value.Metadata, LeaseExpiresAt: value.GetLeaseExpiresAt().AsTime().Format(time.RFC3339)})
 	}
@@ -158,14 +169,25 @@ func (h *Handler) ListServices(c *gin.Context) {
 		Fail(c, h.logger, apperror.Invalid("invalid request", err))
 		return
 	}
-	response, err := h.registry.ListServices(c.Request.Context(), request.Prefix)
+	page, pageSize := pagination(request.Page, request.PageSize)
+	response, total, err := h.registry.ListServicesPage(c.Request.Context(), request.Prefix, page, pageSize)
 	if err != nil {
 		Fail(c, h.logger, err)
 		return
 	}
-	body := ListServicesBody{Revision: response.Revision, Services: make([]ServiceSummaryBody, 0, len(response.Services))}
+	body := ListServicesBody{Revision: response.Revision, Services: make([]ServiceSummaryBody, 0, len(response.Services)), Total: total, Page: page, PageSize: pageSize}
 	for _, value := range response.Services {
 		body.Services = append(body.Services, ServiceSummaryBody{ServiceName: value.ServiceName, HealthyInstances: value.HealthyInstances, DrainingInstances: value.DrainingInstances})
 	}
 	OK(c, body)
+}
+
+func pagination(page, pageSize int) (int, int) {
+	if page == 0 {
+		page = 1
+	}
+	if pageSize == 0 {
+		pageSize = 20
+	}
+	return page, pageSize
 }

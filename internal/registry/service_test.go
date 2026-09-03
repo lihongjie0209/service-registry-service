@@ -75,3 +75,34 @@ func TestValidateInstanceRejectsUnsafeEndpoint(t *testing.T) {
 		}
 	}
 }
+
+func TestPageValues(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		page     int
+		pageSize int
+		want     []int
+	}{
+		{name: "unpaged compatibility", want: []int{1, 2, 3, 4, 5}},
+		{name: "middle page", page: 2, pageSize: 2, want: []int{3, 4}},
+		{name: "partial last page", page: 3, pageSize: 2, want: []int{5}},
+		{name: "past last page", page: 4, pageSize: 2, want: []int{}},
+		{name: "overflow safe", page: int(^uint(0) >> 1), pageSize: 100, want: []int{}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			got := pageValues([]int{1, 2, 3, 4, 5}, test.page, test.pageSize)
+			if len(got) != len(test.want) {
+				t.Fatalf("pageValues() = %v, want %v", got, test.want)
+			}
+			for index := range got {
+				if got[index] != test.want[index] {
+					t.Fatalf("pageValues() = %v, want %v", got, test.want)
+				}
+			}
+		})
+	}
+}

@@ -58,7 +58,13 @@ definitions:
         items:
           $ref: '#/definitions/httptransport.InstanceBody'
         type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
       revision:
+        type: integer
+      total:
         type: integer
     type: object
   httptransport.ListInstancesRequest:
@@ -69,20 +75,40 @@ definitions:
         additionalProperties:
           type: string
         type: object
+      page:
+        minimum: 1
+        type: integer
+      page_size:
+        maximum: 100
+        minimum: 1
+        type: integer
       service_name:
         type: string
     type: object
   httptransport.ListServicesBody:
     properties:
+      page:
+        type: integer
+      page_size:
+        type: integer
       revision:
         type: integer
       services:
         items:
           $ref: '#/definitions/httptransport.ServiceSummaryBody'
         type: array
+      total:
+        type: integer
     type: object
   httptransport.ListServicesRequest:
     properties:
+      page:
+        minimum: 1
+        type: integer
+      page_size:
+        maximum: 100
+        minimum: 1
+        type: integer
       prefix:
         type: string
     type: object

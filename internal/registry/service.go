@@ -86,11 +86,22 @@ func (s *Service) SetStatus(ctx context.Context, request *registryv1.SetInstance
 }
 
 func (s *Service) List(ctx context.Context, request *registryv1.ListInstancesRequest) (*registryv1.ListInstancesResponse, error) {
+	response, _, err := s.list(ctx, request, 0, 0)
+	return response, err
+}
+
+// ListPage returns one stable, instance-ID ordered page. A non-positive page size
+// preserves the unpaged gRPC behavior used by discovery clients.
+func (s *Service) ListPage(ctx context.Context, request *registryv1.ListInstancesRequest, page, pageSize int) (*registryv1.ListInstancesResponse, int, error) {
+	return s.list(ctx, request, page, pageSize)
+}
+
+func (s *Service) list(ctx context.Context, request *registryv1.ListInstancesRequest, page, pageSize int) (*registryv1.ListInstancesResponse, int, error) {
 	if request.GetServiceName() == "" && len(request.GetSelector().GetMatch()) == 0 {
-		return nil, errors.New("service_name or metadata selector is required")
+		return nil, 0, errors.New("service_name or metadata selector is required")
 	}
 	if request.GetServiceName() != "" && !namePattern.MatchString(request.GetServiceName()) {
-		return nil, errors.New("invalid service name")
+		return nil, 0, errors.New("invalid service name")
 	}
 	serviceNames := []string{request.GetServiceName()}
 	var revision uint64
@@ -98,14 +109,14 @@ func (s *Service) List(ctx context.Context, request *registryv1.ListInstancesReq
 		var err error
 		serviceNames, revision, err = s.store.Services(ctx)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 	}
 	values := make([]*registryv1.ServiceInstance, 0)
 	for _, serviceName := range serviceNames {
 		instances, currentRevision, err := s.store.List(ctx, serviceName)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		values = append(values, instances...)
 		if currentRevision > revision {
@@ -119,7 +130,9 @@ func (s *Service) List(ctx context.Context, request *registryv1.ListInstancesReq
 		}
 	}
 	sort.Slice(filtered, func(i, j int) bool { return filtered[i].InstanceId < filtered[j].InstanceId })
-	return &registryv1.ListInstancesResponse{Instances: filtered, Revision: revision}, nil
+	total := len(filtered)
+	filtered = pageValues(filtered, page, pageSize)
+	return &registryv1.ListInstancesResponse{Instances: filtered, Revision: revision}, total, nil
 }
 
 func (s *Service) Get(ctx context.Context, serviceName, instanceID string) (*registryv1.ServiceInstance, error) {
@@ -130,9 +143,19 @@ func (s *Service) Get(ctx context.Context, serviceName, instanceID string) (*reg
 }
 
 func (s *Service) ListServices(ctx context.Context, prefix string) (*registryv1.ListServicesResponse, error) {
+	response, _, err := s.listServices(ctx, prefix, 0, 0)
+	return response, err
+}
+
+// ListServicesPage returns one stable, service-name ordered page for management APIs.
+func (s *Service) ListServicesPage(ctx context.Context, prefix string, page, pageSize int) (*registryv1.ListServicesResponse, int, error) {
+	return s.listServices(ctx, prefix, page, pageSize)
+}
+
+func (s *Service) listServices(ctx context.Context, prefix string, page, pageSize int) (*registryv1.ListServicesResponse, int, error) {
 	names, revision, err := s.store.Services(ctx)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	result := &registryv1.ListServicesResponse{Revision: revision}
 	for _, name := range names {
@@ -141,7 +164,7 @@ func (s *Service) ListServices(ctx context.Context, prefix string) (*registryv1.
 		}
 		instances, _, listErr := s.store.List(ctx, name)
 		if listErr != nil {
-			return nil, listErr
+			return nil, 0, listErr
 		}
 		summary := &registryv1.ServiceSummary{ServiceName: name}
 		for _, instance := range instances {
@@ -157,7 +180,25 @@ func (s *Service) ListServices(ctx context.Context, prefix string) (*registryv1.
 		}
 	}
 	sort.Slice(result.Services, func(i, j int) bool { return result.Services[i].ServiceName < result.Services[j].ServiceName })
-	return result, nil
+	total := len(result.Services)
+	result.Services = pageValues(result.Services, page, pageSize)
+	return result, total, nil
+}
+
+func pageValues[T any](values []T, page, pageSize int) []T {
+	if page <= 0 || pageSize <= 0 {
+		return values
+	}
+	offsetPages := page - 1
+	if offsetPages > len(values)/pageSize {
+		return []T{}
+	}
+	start := offsetPages * pageSize
+	if start >= len(values) {
+		return []T{}
+	}
+	end := min(start+pageSize, len(values))
+	return values[start:end]
 }
 
 func matches(value *registryv1.ServiceInstance, selector *registryv1.MetadataSelector, includeDraining bool) bool {
